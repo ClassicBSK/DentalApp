@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ViT Analysis</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+            max-width: 100%;
+            overflow-x: hidden;
+            touch-action: manipulation;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 80px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #2c3e50;
+        }
+        #analysisImage {
+            max-width: 100%;
+            max-height: 80vh;
+            height: 40vh;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #results {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        #results h2 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        #analysisResult {
+            line-height: 1.6;
+        }
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            font-size: 1.2rem;
+            color: #666;
+        }
+        .confidence-meter {
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .confidence-level {
+            height: 100%;
+            background: #4285f4;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        .button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: center;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .button:active {
+            background: #3367d6;
+            transform: scale(0.98);
+        }
+        .button.secondary {
+            background: #f1f1f1;
+            color: #333;
+        }
+        .nav-buttons {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dental Image Analysis</h1>
+        
+        <img id="analysisImage" src="" alt="Image for Analysis">
+        
+        <div class="loading" id="loadingIndicator">
+            Analyzing image...
+        </div>
+        
+        <div id="results" style="display: none;">
+            <h2>Analysis Results</h2>
+            <div class="confidence-meter">
+                <div class="confidence-level" id="confidenceBar"></div>
+            </div>
+            <div id="analysisResult"></div>
+        </div>
+    </div>
+    
+    <div class="nav-buttons">
+        <button id="prevButton" class="button secondary">Back</button>
+        <button id="finishButton" class="button">Finish</button>
+    </div>
+
+    <script>
+        // DOM Elements
+        const analysisImage = document.getElementById('analysisImage');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const resultsDiv = document.getElementById('results');
+        const analysisResult = document.getElementById('analysisResult');
+        const confidenceBar = document.getElementById('confidenceBar');
+        const prevButton = document.getElementById('prevButton');
+        const finishButton = document.getElementById('finishButton');
+        
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:5000'; // Change to your Flask server address
+        
+        // Load the image (prefer masked image if available)
+        const imageUrl =  localStorage.getItem('capturedImage');
+        analysisImage.src = imageUrl;
+  
+        analysisImage.onload = async function() {
+            // Show loading indicator
+            loadingIndicator.style.display = 'flex';
+            
+            try {
+                // Send image to backend for analysis with ViT model
+                const results = await analyzeWithViT(analysisImage);
+                console.log(results)
+                // Display results
+                displayResults(results);
+            } catch (error) {
+                console.error("Analysis error:", error);
+                analysisResult.innerHTML = `<p style="color: red;">Error analyzing image: ${error.message}</p>`;
+                confidenceBar.style.width = '0%';
+                resultsDiv.style.display = 'block';
+                loadingIndicator.style.display = 'none';
+            }
+        };
+        
+        // Send image to Flask backend for ViT analysis
+        async function analyzeWithViT(imageElement) {
+            // Convert image to blob
+            const blob = await imageToBlob(imageElement);
+            
+            // Create form data to send
+            const formData = new FormData();
+            formData.append('image', blob, 'dental_image.png');
+            
+            // Send to Flask API
+            const response = await fetch(`${API_BASE_URL}/vit`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            // Parse JSON response
+            
+            return await response.json();
+        }
+        
+        // Helper function to convert image to blob
+        function imageToBlob(imageElement) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = imageElement.width;
+                canvas.height = imageElement.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(imageElement, 0, 0);
+                canvas.toBlob(resolve, 'image/png');
+            });
+        }
+        
+        // Display the analysis results
+        function displayResults(results) {
+            console.log(results)
+            analysisResult.innerHTML = `
+                <p><strong>Classification:</strong> ${results.classification}</p>
+                <p><strong>Confidence:</strong> ${Math.round(results.confidence * 100)}%</p>
+                <p><strong>Details:</strong> ${results.details}</p>
+                ${results.recommendation ? `<p><strong>Recommendation:</strong> ${results.recommendation}</p>` : ''}
+            `;
+            
+            confidenceBar.style.width = `${results.confidence * 100}%`;
+            resultsDiv.style.display = 'block';
+            loadingIndicator.style.display = 'none';
+        }
+        
+        // Navigation
+        prevButton.addEventListener('click', () => {
+            window.location.href = 'mask.html';
+        });
+        
+        finishButton.addEventListener('click', () => {
+            // Reset the flow or redirect to home
+            localStorage.removeItem('capturedImage');
+            localStorage.removeItem('maskedImage');
+            window.location.href = 'index.html';
+        });
+    </script>
+</body>
+</html>
